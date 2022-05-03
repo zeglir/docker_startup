@@ -1,0 +1,83 @@
+■8-58 Laravel環境構築について
+
+1.事前準備
+以下のフォルダ構成になっていることを確認する。
+docker-compose.yml
+./data:
+./db:
+  my.cnf
+./php:
+  Dockerfile
+  vhost.con
+
+2.Laravelのインストール
+以下のコマンドを実行する。
+> docker-compose run php composer create-project --prefer-dist laravel/laravel .
+
+※Dockerfileに指定すると、イメージ内にLaravelソースが含まれてしまうため、
+  開発環境としては docker-compose run でインストールしている。
+※composerは Dockerfileでインストール済
+※--prefer-dist は GitHubから zipファイルでDLする。git cloneより高速
+※docker-compose.ymlで./source:/var/www/html の指定があるので、実行すると source配下に Laravelのソースが展開される。
+
+3.起動
+以下のコマンドを実行する。
+> docker-compose up -d
+
+4.インストール確認（php-apacheコンテナ側）
+> docker-compose ps
+NAME                COMMAND                  SERVICE             STATUS              PORTS
+laravel-db          "docker-entrypoint.s…"   db                  running             0.0.0.0:13306->3306/tcp
+laravel-php         "docker-php-entrypoi…"   php                 running             0.0.0.0:8080->80/tcp
+
+http://localhost:8080/ にアクセスしてみる。
+
+UnexpectedValueException
+The stream or file "/var/www/html/storage/logs/laravel.log" could not be opened in append mode: failed to open stream: Permission denied The exception occurred while attempting to log: The stream or file
+が発生した場合は、
+以下のコマンドを実行する。
+> docker-compose run php chmod -R 0777 /var/www/html/bootstrap
+> docker-compose run php chmod -R 0777 /var/www/html/storage
+
+Laravelのページが表示されればOK。
+
+5.DBコンテナへの接続設定
+./source/.env ファイルを開いて、以下を編集する。
+DB_HOST=db
+DB_USERNAME=docker
+DB_PASSWORD=docker
+
+※db は、docker-compose.ymlで定義したサービス。コンテナ間通信になるのでこれで接続できる。
+※ユーザ名・パスワードはdocker-compose.ymlで定義した環境変数
+
+6.DBコンテナへの接続確認
+php-apacheコンテナに入る。
+> docker-compose exec -it php /bin/bash
+root@4dda8bb6ab29:/var/www/html# 
+
+Dockerfileで WORKDIRを定義しているので、カレントが /var/www/html になる。
+ここで、以下のコマンドを実行する。
+以下のように何らかの処理が動いたログが出てくれば DBコンテナへの接続は成功している。
+
+root@4dda8bb6ab29:/var/www/html# php artisan migrate  
+Migration table created successfully.
+Migrating: 2014_10_12_000000_create_users_table
+Migrated:  2014_10_12_000000_create_users_table (202.61ms)
+Migrating: 2014_10_12_100000_create_password_resets_table
+Migrated:  2014_10_12_100000_create_password_resets_table (92.13ms)
+Migrating: 2019_08_19_000000_create_failed_jobs_table
+Migrated:  2019_08_19_000000_create_failed_jobs_table (92.68ms)
+Migrating: 2019_12_14_000001_create_personal_access_tokens_table
+Migrated:  2019_12_14_000001_create_personal_access_tokens_table (129.34ms)
+root@4dda8bb6ab29:/var/www/html# php artisan migrate:rollback
+Rolling back: 2019_12_14_000001_create_personal_access_tokens_table
+Rolled back:  2019_12_14_000001_create_personal_access_tokens_table (323.76ms)
+Rolling back: 2019_08_19_000000_create_failed_jobs_table
+Rolled back:  2019_08_19_000000_create_failed_jobs_table (16.04ms)
+Rolling back: 2014_10_12_100000_create_password_resets_table
+Rolled back:  2014_10_12_100000_create_password_resets_table (16.83ms)
+Rolling back: 2014_10_12_000000_create_users_table
+Rolled back:  2014_10_12_000000_create_users_table (23.61ms)
+
+7.後始末
+> docker-compose down --rmi all
